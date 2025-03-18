@@ -8,8 +8,16 @@ import openmeteo_requests
 from datetime import date, datetime
 
 # ---------------------------------------------------------------
-# 1) Fetch Weather Data from the Open-Meteo Archive API
+# 1) Page Configuration and Caching Setup
 # ---------------------------------------------------------------
+st.set_page_config(
+    page_title="Fancy Weather Dashboard",
+    page_icon="🌎",
+    layout="centered"
+)
+
+# Cache the data fetch to optimize performance when same parameters are used.
+@st.cache_data(show_spinner=False)
 def fetch_weather_data(latitude, longitude, start_date, end_date, selected_vars):
     """
     Fetches hourly weather data from Open-Meteo for the given latitude, longitude,
@@ -49,7 +57,6 @@ def fetch_weather_data(latitude, longitude, start_date, end_date, selected_vars)
         st.error(f"Error fetching data: {e}")
         return pd.DataFrame()
 
-    # Parse the response into a DataFrame
     response = responses[0]
     hourly = response.Hourly()
     date_range = pd.date_range(
@@ -66,10 +73,7 @@ def fetch_weather_data(latitude, longitude, start_date, end_date, selected_vars)
     df = pd.DataFrame(data_dict)
     df.set_index("date", inplace=True)
 
-    # If desired, you can convert from UTC to local time, e.g.:
-    # df.index = df.index.tz_convert("America/New_York")
     return df
-
 
 # ---------------------------------------------------------------
 # 2) Plotting Functions
@@ -188,19 +192,54 @@ def plot_correlation_heatmap(df):
     )
     return fig
 
-
 # ---------------------------------------------------------------
 # 3) Streamlit App
 # ---------------------------------------------------------------
 def main():
+    # Fancy Developer Credits
+    st.markdown(
+        "<h2 style='text-align: center; color: #7D3C98;'>"
+        "🌟 Develop by <b>Arash Hosseini</b> for <i>Arezoo Esrafili</i> with Love ❤️"
+        "</h2>",
+        unsafe_allow_html=True
+    )
+
+    st.markdown("---")
     st.title("Weather Dashboard")
+
+    # Sidebar About Section
+    with st.sidebar.expander("ℹ️ About this App", expanded=False):
+        st.write(
+            """
+            This interactive weather dashboard fetches historical Open-Meteo data for a 
+            specified latitude and longitude over a custom date range. 
+            You can select which variables to include and optionally view or download 
+            advanced statistics and visualizations.
+            """
+        )
 
     # Sidebar inputs
     st.sidebar.header("Input Parameters")
-    lat = st.sidebar.number_input("Latitude", value=41.5998779)
-    lon = st.sidebar.number_input("Longitude", value=-85.3992676)
-    start_date = st.sidebar.date_input("Start Date", date(2000, 1, 1))
-    end_date = st.sidebar.date_input("End Date", date(2024, 12, 31))
+    lat = st.sidebar.number_input(
+        "Latitude",
+        value=41.5998779,
+        help="Enter the latitude for your location. Example: 41.5998779"
+    )
+    lon = st.sidebar.number_input(
+        "Longitude",
+        value=-85.3992676,
+        help="Enter the longitude for your location. Example: -85.3992676"
+    )
+    start_date = st.sidebar.date_input(
+        "Start Date",
+        date(2000, 1, 1),
+        help="Select the earliest date in your desired range."
+    )
+    end_date = st.sidebar.date_input(
+        "End Date",
+        date(2024, 12, 31),
+        help="Select the latest date in your desired range."
+    )
 
     # Variable selection
     possible_vars = [
@@ -216,8 +255,16 @@ def main():
         default=possible_vars
     )
 
+    # Let users choose which plots to display
+    st.sidebar.markdown("#### Choose Plots to Display:")
+    show_daily = st.sidebar.checkbox("Daily Time Series", value=True)
+    show_monthly_avg = st.sidebar.checkbox("Monthly Averages", value=True)
+    show_box = st.sidebar.checkbox("Monthly Box Plot", value=True)
+    show_corr = st.sidebar.checkbox("Correlation Heatmap", value=True)
+
     # Fetch Data button
     if st.sidebar.button("Fetch Data"):
+        # Validate date range
         if start_date >= end_date:
             st.error("Error: Start date must be before end date.")
             return
@@ -229,42 +276,63 @@ def main():
             return
 
         st.success(f"Data fetched for {len(data)} hourly records.")
-        st.write("Here is a preview of the first 10 rows:")
-        st.dataframe(data.head(10))
+        st.balloons()  # Fancy balloon celebration!
+
+        st.markdown("---")
+        st.subheader("Data Preview")
+        with st.expander("Show Raw Data (first 10 rows)", expanded=False):
+            st.dataframe(data.head(10))
+
+        # --- Plots ---
+        st.markdown("---")
+        st.subheader("Visualizations")
 
         # Daily Time Series
-        fig_daily = plot_daily_timeseries(data)
-        if fig_daily:
-            st.plotly_chart(fig_daily)
+        if show_daily:
+            fig_daily = plot_daily_timeseries(data)
+            if fig_daily:
+                st.plotly_chart(fig_daily)
 
         # Monthly Averages
-        fig_monthly = plot_monthly_averages(data)
-        if fig_monthly:
-            st.plotly_chart(fig_monthly)
+        if show_monthly_avg:
+            fig_monthly = plot_monthly_averages(data)
+            if fig_monthly:
+                st.plotly_chart(fig_monthly)
 
         # Box Plot
-        fig_box = plot_monthly_distribution_box(data)
-        if fig_box:
-            st.plotly_chart(fig_box)
+        if show_box:
+            fig_box = plot_monthly_distribution_box(data)
+            if fig_box:
+                st.plotly_chart(fig_box)
 
         # Monthly Stats Table
+        st.markdown("---")
+        st.subheader("Monthly Statistics")
         monthly_stats_df = create_monthly_stats_table(data)
-        if not monthly_stats_df.empty:
-            st.write("Detailed Monthly Stats (Mean, Min, Max):")
-            st.dataframe(monthly_stats_df)
+        if monthly_stats_df.empty:
+            st.info("No data to calculate monthly stats.")
+        else:
+            with st.expander("View Monthly Statistics Table", expanded=False):
+                st.dataframe(monthly_stats_df)
 
         # Correlation Heatmap
-        if len(data.columns) > 1:
+        if show_corr and len(data.columns) > 1:
             fig_corr = plot_correlation_heatmap(data)
             if fig_corr:
                 st.plotly_chart(fig_corr)
 
-        # Save CSV button
-        if st.sidebar.button("Save CSV"):
-            data.to_csv('weather_data.csv')
-            st.success("Data saved to 'weather_data.csv' in the current directory.")
+        # Download CSV
+        st.markdown("---")
+        csv_data = data.to_csv().encode('utf-8')
+        st.download_button(
+            label="Download Data as CSV",
+            data=csv_data,
+            file_name="weather_data.csv",
+            mime="text/csv"
+        )
 
 
 # Run the app
 if __name__ == "__main__":
     main()
+
