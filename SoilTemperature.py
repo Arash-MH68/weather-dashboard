@@ -199,7 +199,7 @@ def main():
     # Fancy Developer Credits
     st.markdown(
         "<h2 style='text-align: center; color: #7D3C98;'>"
-        "🌟 Develop by <b>Arash Hosseini</b>"
+        "Developed by <b>Arash Hosseini</b>"
         "</h2>",
         unsafe_allow_html=True
     )
