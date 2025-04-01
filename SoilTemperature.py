@@ -17,7 +17,8 @@ st.set_page_config(
 )
 
 # Terracon Logo for branding (improvement: visible brand identity)
-st.image("Terracon-Logo 2.jpg", width=200)
+st.image(".devcontainer/Terracon-Logo 2.jpg", width=200)
+
 
 # ===============================================================
 # DATA FETCHING & CACHING FUNCTION
