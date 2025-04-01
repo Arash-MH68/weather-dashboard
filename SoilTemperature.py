@@ -6,15 +6,11 @@ from retry_requests import retry
 import openmeteo_requests
 from datetime import date
 
-# -------------------------------------------------------
-# PAGE CONFIGURATION & BRANDING
-# -------------------------------------------------------
+
 st.set_page_config(page_title="Terracon Weather Dashboard", page_icon="🌎", layout="centered")
 st.image(".devcontainer/Terracon-Logo 2.jpg", width=200)
 
-# -------------------------------------------------------
-# CONSTANTS & LOOKUPS
-# -------------------------------------------------------
+
 ALL_VARS_API_TO_FRIENDLY = {
     "temperature_2m": "Air Temp (2m)",
     "soil_temperature_0_to_7cm": "Soil Temp (0-7cm)",
@@ -40,13 +36,11 @@ DEPTHS_MOISTURE = {
     "Soil Moisture (100-255cm)": 177.5
 }
 
-# -------------------------------------------------------
-# DATA FETCHING & CACHING
-# -------------------------------------------------------
+
 @st.cache_data(show_spinner=False)
 def fetch_weather_data(latitude, longitude, start_dt, end_dt, selected_vars_api):
     """
-    Fetch data from Open-Meteo API and return a DataFrame with user-friendly column names.
+    Fetch data from Open-Meteo API and return a DataFrame
     """
     cache_session = requests_cache.CachedSession(".cache", expire_after=-1)
     retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
@@ -82,14 +76,12 @@ def fetch_weather_data(latitude, longitude, start_dt, end_dt, selected_vars_api)
         data_dict[var] = hourly.Variables(i).ValuesAsNumpy()
 
     df = pd.DataFrame(data_dict).set_index("date")
-    # Rename columns to user-friendly names.
+   
     rename_map = {api_var: ALL_VARS_API_TO_FRIENDLY[api_var] for api_var in selected_vars_api}
     df.rename(columns=rename_map, inplace=True)
     return df
 
-# -------------------------------------------------------
-# UTILITY FUNCTIONS
-# -------------------------------------------------------
+
 def compute_freeze_stats(sub_df: pd.DataFrame):
     """
     For each temperature column in sub_df, compute:
@@ -119,9 +111,7 @@ def compute_freeze_stats(sub_df: pd.DataFrame):
 
 
 def display_freeze_stats(freeze_stats: dict, frequency_label: str):
-    """
-    Display freeze stats in a professional format.
-    """
+ 
     if not freeze_stats:
         st.write("No temperature columns or no below-freezing data.")
         return
@@ -142,10 +132,7 @@ def display_freeze_stats(freeze_stats: dict, frequency_label: str):
 
 
 def resample_data(df: pd.DataFrame, freq: str):
-    """
-    Resample data based on chosen frequency.
-    freq options: 'Hourly' (no resample), 'Daily', 'Monthly', 'Yearly'.
-    """
+ 
     if freq == "Hourly":
         return df.copy()
     elif freq == "Daily":
@@ -168,11 +155,7 @@ def create_plotly_line_chart(
     width: int = 1200,
     height: int = 600
 ):
-    """
-    Create a Plotly line chart with professional styling.
-    The chart uses default data colors but black axis lines and grid.
-    If is_temperature is True, a dashed horizontal freezing line at 0°C is added.
-    """
+  
     if df.empty:
         return None
 
@@ -214,11 +197,7 @@ def create_plotly_line_chart(
 
 
 def plot_timeseries(df: pd.DataFrame, columns_to_plot: list, freq: str):
-    """
-    Plot a time series for the selected columns.
-    Data is resampled according to the chosen frequency (Hourly, Daily, Monthly, Yearly).
-    Returns the Plotly figure and the (possibly resampled) DataFrame.
-    """
+    
     if not columns_to_plot:
         return None, None
 
@@ -232,10 +211,7 @@ def plot_timeseries(df: pd.DataFrame, columns_to_plot: list, freq: str):
 
 
 def plot_vertical_profile(df: pd.DataFrame, month_year: str, profile_type: str):
-    """
-    Plot a vertical profile for the selected month–year.
-    For temperature profiles, a vertical freezing line (0°C) is added.
-    """
+  
     if df.empty:
         return None
 
@@ -292,9 +268,7 @@ def plot_vertical_profile(df: pd.DataFrame, month_year: str, profile_type: str):
     fig.update_yaxes(showline=True, linecolor="black", gridcolor="black")
     return fig
 
-# -------------------------------------------------------
-# MAIN APPLICATION
-# -------------------------------------------------------
+
 def main():
     # ========= 1. INITIAL INPUTS (Sidebar) =========
     st.sidebar.header("Input Parameters")
