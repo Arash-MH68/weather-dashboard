@@ -11,7 +11,7 @@ from datetime import date, datetime
 # 1) Page Configuration and Caching Setup
 # ---------------------------------------------------------------
 st.set_page_config(
-    page_title="Fancy Weather Dashboard",
+    page_title="Terracon Weather Dashboard",
     page_icon="🌎",
     layout="centered"
 )
@@ -20,25 +20,32 @@ st.set_page_config(
 @st.cache_data(show_spinner=False)
 def fetch_weather_data(latitude, longitude, start_date, end_date, selected_vars):
     """
-    Fetches hourly weather data from Open-Meteo for the given latitude, longitude,
-    date range, and selected variables. Returns a pandas DataFrame.
+    Fetches hourly weather data (including soil temperature & moisture)
+    from Open-Meteo for the given latitude, longitude, date range, and
+    selected variables. Returns a pandas DataFrame.
     """
+    # 1) Improvement: Enhanced docstring to clarify moisture capability.
+    
     # Setup caching and retry mechanism
     cache_session = requests_cache.CachedSession('.cache', expire_after=-1)
     retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
     openmeteo = openmeteo_requests.Client(session=retry_session)
 
-    # Map API variables to friendly names
+    # 2) Improvement: Extended possible variables to include soil moisture.
     all_possible_vars = {
         "temperature_2m": "Air Temp (2m)",
         "soil_temperature_0_to_7cm": "Soil Temp (0-7cm)",
         "soil_temperature_7_to_28cm": "Soil Temp (7-28cm)",
         "soil_temperature_28_to_100cm": "Soil Temp (28-100cm)",
-        "soil_temperature_100_to_255cm": "Soil Temp (100-255cm)"
+        "soil_temperature_100_to_255cm": "Soil Temp (100-255cm)",
+        "soil_moisture_0_to_7cm": "Soil Moisture (0-7cm)",
+        "soil_moisture_7_to_28cm": "Soil Moisture (7-28cm)",
+        "soil_moisture_28_to_100cm": "Soil Moisture (28-100cm)",
+        "soil_moisture_100_to_255cm": "Soil Moisture (100-255cm)"
     }
 
     # Convert friendly names back to API variable names
-    chosen_vars = [k for k, v in all_possible_vars.items() if v in selected_vars]
+    chosen_vars = [api_var for api_var, friendly_name in all_possible_vars.items() if friendly_name in selected_vars]
     if not chosen_vars:
         return pd.DataFrame()
 
@@ -85,81 +92,62 @@ def plot_daily_timeseries(df):
     if df.empty:
         return None
 
+    # 3) Improvement: Updated chart title & y-axis label to be generic (covers soil moisture too).
     fig = go.Figure()
-    rename_map = {
-        "temperature_2m": "Air Temp (2m)",
-        "soil_temperature_0_to_7cm": "Soil Temp (0-7cm)",
-        "soil_temperature_7_to_28cm": "Soil Temp (7-28cm)",
-        "soil_temperature_28_to_100cm": "Soil Temp (28-100cm)",
-        "soil_temperature_100_to_255cm": "Soil Temp (100-255cm)"
-    }
     for col in df.columns:
         fig.add_trace(go.Scatter(
             x=df.index, y=df[col],
             mode='lines',
-            name=rename_map.get(col, col),
+            name=col,
             opacity=0.8
         ))
     fig.update_layout(
-        title="Daily Temperature Time Series",
+        title="Daily Time Series",
         xaxis_title="Date",
-        yaxis_title="Temperature (°C)",
+        yaxis_title="Value",
         hovermode="x unified"
     )
     return fig
 
 def plot_monthly_averages(df):
     """
-    Plots monthly average temperatures for each variable in the DataFrame.
+    Plots monthly averages for each variable in the DataFrame.
     """
     if df.empty:
         return None
 
     monthly_avg = df.resample("MS").mean()
     fig = go.Figure()
-    rename_map = {
-        "temperature_2m": "Air Temp (2m)",
-        "soil_temperature_0_to_7cm": "Soil Temp (0-7cm)",
-        "soil_temperature_7_to_28cm": "Soil Temp (7-28cm)",
-        "soil_temperature_28_to_100cm": "Soil Temp (28-100cm)",
-        "soil_temperature_100_to_255cm": "Soil Temp (100-255cm)"
-    }
     for col in monthly_avg.columns:
         fig.add_trace(go.Scatter(
             x=monthly_avg.index, y=monthly_avg[col],
             mode='lines+markers',
-            name=rename_map.get(col, col)
+            name=col
         ))
+    # 4) Improvement: Title now reflects that these can be temperature or moisture.
     fig.update_layout(
-        title="Monthly Average Temperatures",
+        title="Monthly Averages",
         xaxis_title="Month",
-        yaxis_title="Temperature (°C)",
+        yaxis_title="Value",
         hovermode="x unified"
     )
     return fig
 
 def plot_monthly_distribution_box(df):
     """
-    Creates a box plot of monthly average temperatures for each variable.
+    Creates a box plot of monthly average values for each variable.
     """
     if df.empty:
         return None
 
     monthly_avg = df.resample("MS").mean().reset_index()
-    long_df = monthly_avg.melt(id_vars="date", var_name="Variable", value_name="Temperature")
-    rename_map = {
-        "temperature_2m": "Air Temp (2m)",
-        "soil_temperature_0_to_7cm": "Soil Temp (0-7cm)",
-        "soil_temperature_7_to_28cm": "Soil Temp (7-28cm)",
-        "soil_temperature_28_to_100cm": "Soil Temp (28-100cm)",
-        "soil_temperature_100_to_255cm": "Soil Temp (100-255cm)"
-    }
-    long_df["Variable"] = long_df["Variable"].map(rename_map)
+    long_df = monthly_avg.melt(id_vars="date", var_name="Variable", value_name="Value")
 
+    # 5) Improvement: More generic wording and labeling (covers moisture and temperature).
     fig = px.box(
-        long_df, x="Variable", y="Temperature",
-        title="Monthly Distribution of Temperature by Depth",
-        labels={"Variable": "Temperature Variable", "Temperature": "Temperature (°C)"}
+        long_df, x="Variable", y="Value",
+        title="Monthly Distribution by Depth (and Variable)",
+        labels={"Variable": "Variable", "Value": "Value"}
     )
     return fig
 
@@ -176,31 +164,72 @@ def create_monthly_stats_table(df):
     monthly_stats.rename(columns={"date": "Month"}, inplace=True)
     return monthly_stats
 
-def plot_correlation_heatmap(df):
+def plot_soil_temp_moisture_profile_monthly(df):
     """
-    Plots a correlation heatmap among the selected variables.
+    Plots monthly average soil temperature and soil moisture by depth
+    (two separate figures).
     """
     if df.empty:
-        return None
+        return None, None
 
-    corr = df.corr()
-    fig = px.imshow(
-        corr,
-        text_auto=True,
-        aspect="auto",
-        title="Correlation Heatmap"
-    )
-    return fig
+    # 6) Improvement: Separate out columns for soil temperature vs. soil moisture
+    soil_temp_cols = [c for c in df.columns if "soil_temperature" in c]
+    soil_moist_cols = [c for c in df.columns if "soil_moisture" in c]
+
+    # If there's no soil data, return None
+    if not soil_temp_cols and not soil_moist_cols:
+        return None, None
+
+    monthly_avg = df.resample("MS").mean()
+
+    # 7) Improvement: Provide separate figures for clarity:
+    fig_temp = None
+    fig_moist = None
+
+    # Soil Temperature
+    if soil_temp_cols:
+        fig_temp = go.Figure()
+        for col in soil_temp_cols:
+            fig_temp.add_trace(go.Scatter(
+                x=monthly_avg.index,
+                y=monthly_avg[col],
+                mode='lines+markers',
+                name=col
+            ))
+        fig_temp.update_layout(
+            title="Monthly Average Soil Temperature by Depth",
+            xaxis_title="Month",
+            yaxis_title="Temperature (°C)",
+            hovermode="x unified"
+        )
+
+    # Soil Moisture
+    if soil_moist_cols:
+        fig_moist = go.Figure()
+        for col in soil_moist_cols:
+            fig_moist.add_trace(go.Scatter(
+                x=monthly_avg.index,
+                y=monthly_avg[col],
+                mode='lines+markers',
+                name=col
+            ))
+        fig_moist.update_layout(
+            title="Monthly Average Soil Moisture by Depth",
+            xaxis_title="Month",
+            # 8) Improvement: Soil moisture unit clarified in label
+            yaxis_title="Soil Moisture (m³/m³)",
+            hovermode="x unified"
+        )
+
+    return fig_temp, fig_moist
 
 # ---------------------------------------------------------------
 # 3) Streamlit App
 # ---------------------------------------------------------------
 def main():
-    # Fancy Developer Credits
+    # 9) Improvement: Simplified developer credit formatting & text.
     st.markdown(
-        "<h2 style='text-align: center; color: #7D3C98;'>"
-        "Developed by <b>Arash Hosseini</b>"
-        "</h2>",
+        "<h3 style='text-align: center;'>Developed by <b>Arash Hosseini</b></h3>",
         unsafe_allow_html=True
     )
 
@@ -213,8 +242,8 @@ def main():
             """
             This interactive weather dashboard fetches historical Open-Meteo data for a 
             specified latitude and longitude over a custom date range. 
-            You can select which variables to include and optionally view or download 
-            advanced statistics and visualizations.
+            You can select variables (including soil temperature & moisture) and view 
+            both daily and monthly statistics and visualizations.
             """
         )
 
@@ -230,9 +259,11 @@ def main():
         value=-85.3992676,
         help="Enter the longitude for your location. Example: -85.3992676"
     )
+    
+    # 10) Improvement: More practical default date range (slightly narrower).
     start_date = st.sidebar.date_input(
         "Start Date",
-        date(2000, 1, 1),
+        date(2010, 1, 1),
         help="Select the earliest date in your desired range."
     )
     end_date = st.sidebar.date_input(
@@ -247,7 +278,11 @@ def main():
         "Soil Temp (0-7cm)",
         "Soil Temp (7-28cm)",
         "Soil Temp (28-100cm)",
-        "Soil Temp (100-255cm)"
+        "Soil Temp (100-255cm)",
+        "Soil Moisture (0-7cm)",
+        "Soil Moisture (7-28cm)",
+        "Soil Moisture (28-100cm)",
+        "Soil Moisture (100-255cm)"
     ]
     selected_vars = st.sidebar.multiselect(
         "Select Variables",
@@ -260,26 +295,29 @@ def main():
     show_daily = st.sidebar.checkbox("Daily Time Series", value=True)
     show_monthly_avg = st.sidebar.checkbox("Monthly Averages", value=True)
     show_box = st.sidebar.checkbox("Monthly Box Plot", value=True)
-    show_corr = st.sidebar.checkbox("Correlation Heatmap", value=True)
+
+    # REMOVED correlation heatmap entirely (Issue removed #1).
 
     # Fetch Data button
     if st.sidebar.button("Fetch Data"):
-        # Validate date range
-        if start_date >= end_date:
-            st.error("Error: Start date must be before end date.")
+        # 2) Issue removed: Proper date range validation that won't break if same day is chosen.
+        if start_date > end_date:
+            st.error("Error: Start date must be before or equal to End date.")
             return
 
-        st.info("Fetching data...")
+        # Info message while fetching data
+        st.info("Fetching data... Please wait.")
         data = fetch_weather_data(lat, lon, start_date, end_date, selected_vars)
         if data.empty:
             st.error("No data fetched. Check variable selection or date range.")
             return
 
         st.success(f"Data fetched for {len(data)} hourly records.")
-        st.balloons()  # Fancy balloon celebration!
+        st.balloons()
 
         st.markdown("---")
         st.subheader("Data Preview")
+        # 3) Issue removed: Show entire dataframe might be too big; just show 10 rows.
         with st.expander("Show Raw Data (first 10 rows)", expanded=False):
             st.dataframe(data.head(10))
 
@@ -305,6 +343,16 @@ def main():
             if fig_box:
                 st.plotly_chart(fig_box)
 
+        # Soil Temperature & Moisture Profiles by Depth (monthly avg)
+        soil_temp_fig, soil_moist_fig = plot_soil_temp_moisture_profile_monthly(data)
+        if soil_temp_fig or soil_moist_fig:
+            st.markdown("---")
+            st.subheader("Soil Profiles (Monthly Averages)")
+            if soil_temp_fig:
+                st.plotly_chart(soil_temp_fig)
+            if soil_moist_fig:
+                st.plotly_chart(soil_moist_fig)
+
         # Monthly Stats Table
         st.markdown("---")
         st.subheader("Monthly Statistics")
@@ -314,12 +362,6 @@ def main():
         else:
             with st.expander("View Monthly Statistics Table", expanded=False):
                 st.dataframe(monthly_stats_df)
-
-        # Correlation Heatmap
-        if show_corr and len(data.columns) > 1:
-            fig_corr = plot_correlation_heatmap(data)
-            if fig_corr:
-                st.plotly_chart(fig_corr)
 
         # Download CSV
         st.markdown("---")
@@ -331,8 +373,6 @@ def main():
             mime="text/csv"
         )
 
-
 # Run the app
 if __name__ == "__main__":
     main()
-
