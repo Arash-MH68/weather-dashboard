@@ -19,7 +19,7 @@ st.set_page_config(
 )
 
 # Terracon Logo (improvement: brand identity)
-st.image("https://images.app.goo.gl/PfMR7rrkgT5YC5yQ8", width=200)
+st.image("https://ibb.co/RpZQ12r38", width=200)
 
 # ---------------------------------------------------------------
 # Data Caching Function (improved with error handling and docstring)
